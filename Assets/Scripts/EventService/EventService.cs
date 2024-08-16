@@ -9,6 +9,8 @@ namespace EventService
 {
     public class EventService : MonoBehaviour
     {
+        private const string EventDataSaveKey = "EventDataKey";
+
         private float _cooldownBeforeSend = 3f;
         private string _serverUrl = "";
         private bool _isCooldownStart = false;
@@ -16,6 +18,8 @@ namespace EventService
 
         private void Start()
         {
+            _analyticEventDataQueue = LoadData();
+
             if (_analyticEventDataQueue.Count != 0)
                 SendEvent();
         }
@@ -27,19 +31,10 @@ namespace EventService
 
             if (!_isCooldownStart)
             {
-                  SendEvent();
-                  _isCooldownStart = true;
-                  StartCoroutine(StartTimer());
-            }
-        }
-
-        private IEnumerator StartTimer()
-        {
-            yield return new WaitForSeconds(_cooldownBeforeSend);
-            _isCooldownStart = false;
-            
-            if(_analyticEventDataQueue.Count != 0)
                 SendEvent();
+                _isCooldownStart = true;
+                StartCoroutine(StartTimer());
+            }
         }
 
         private void SendEvent()
@@ -49,11 +44,20 @@ namespace EventService
                 StartCoroutine(SendEvent(analyticEventData));
             }
         }
+        
+        private IEnumerator StartTimer()
+        {
+            yield return new WaitForSeconds(_cooldownBeforeSend);
+            _isCooldownStart = false;
+
+            if (_analyticEventDataQueue.Count != 0)
+                SendEvent();
+        }
 
         private IEnumerator SendEvent(AnalyticEventData analyticEventData)
         {
             string data = JsonUtility.ToJson(analyticEventData);
-            
+
             using (UnityWebRequest request = UnityWebRequest.Post(_serverUrl, data))
             {
                 yield return request.SendWebRequest();
@@ -61,6 +65,7 @@ namespace EventService
                 if (request.isHttpError || request.isNetworkError)
                 {
                     Debug.LogError(request.error);
+                    SaveData();
                 }
                 else
                 {
@@ -70,6 +75,23 @@ namespace EventService
                     }
                 }
             }
+        }
+
+        private void OnApplicationQuit() =>
+            SaveData();
+
+        private void SaveData()
+        {
+            string eventDataToJson = JsonUtility.ToJson(_analyticEventDataQueue);
+            PlayerPrefs.SetString(EventDataSaveKey, eventDataToJson);
+        }
+
+        private List<AnalyticEventData> LoadData()
+        {
+            string eventDataFromJson = PlayerPrefs.GetString(EventDataSaveKey);
+            List<AnalyticEventData> analyticEventData =
+                JsonUtility.FromJson<List<AnalyticEventData>>(eventDataFromJson);
+            return analyticEventData;
         }
     }
 }
